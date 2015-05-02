@@ -7,10 +7,25 @@
  * @link http://pico.dev7studios.com
  * @license http://opensource.org/licenses/MIT
  */
+
+// include composer autoload
+require 'vendor/autoload.php';
+
+// import the Intervention Image Manager Class
+use Intervention\Image\ImageManagerStatic as Image;
+
+
+
+
 class Pico_Pages_Images
 {
 	private $path;
 	private $root;
+
+	private $create_thumbnails;
+	private $thumbnail_path = "";
+	private $images_order_by;
+	private $images_order;
 
 	// Pico hooks ---------------
 
@@ -21,11 +36,28 @@ class Pico_Pages_Images
 	{
 		$this->path = $this->format($url);
 	}
+
+
 	public function config_loaded(&$settings)
 	{
 		if( !empty($settings['images_path']) )
 			$this->root = $this->format($settings['images_path']);
 		else $this->root = 'content/';
+
+		if( !empty($settings['thumbnail_path'])) {
+			$this->create_thumbnails = true;
+			$this->thumbnail_path = $settings['thumbnail_path'];
+		}
+		else $create_thumbnails = false;
+
+		if( !empty($settings['images_order_by']))
+			$this->images_order_bys = $settings['images_order_by'];
+		else $this->images_order_by = 'alpha';
+
+
+		if( !empty($settings['images_order']))
+			$this->images_order = $settings['images_order'];
+		else $this->images_order = 'asc';
 	}
 
 	/**
@@ -57,6 +89,7 @@ class Pico_Pages_Images
 	 */
 	private function images_list($base_url)
 	{
+
 		$images_path = $this->root . $this->path;
 
 		$data = array();
@@ -68,17 +101,53 @@ class Pico_Pages_Images
 			list(, $basename, $ext, $filename) = array_values(pathinfo($path));
 			list($width, $height, $type, $size, $mime) = getimagesize($path);
 
+			$thumbnail = '';
+			$img = Image::make(ROOT_DIR . '/'. $images_path . $basename);
+			$exif = $img->exif();
+			$timestamp = array_key_exists('DateTime', $exif) ? strtotime($exif['DateTime']) : intval($exif['FileDateTime']);
+			$date_formatted = date("d.m.Y - H:i", $timestamp);
+
+			if($this->create_thumbnails){
+				$thumbnail = '/'.$images_path . $this->thumbnail_path .  $filename . '.' . $ext;
+				if(!file_exists(ROOT_DIR . $thumbnail )) {
+					$img->resize(320, 240);
+					$img->save(ROOT_DIR . $thumbnail);
+				}
+			}
+
+
+
 			$data[] = array (
-				'url' => $base_url .'/'. $images_path . $basename,
+				'url' => '/'. $images_path . $basename,
 				'path' => $images_path,
 				'name' => $filename,
 				'ext' => $ext,
 				'width' => $width,
 				'height' => $height,
-				'size' => $size
+				'size' => $size,
+				'thumbnail_url' => $thumbnail,
+				'exif' =>$exif,
+				'timestamp_formatted' => $date_formatted,
+				'timestamp' => $timestamp
 			);
 		}
+
+		if($this->images_order_by == 'date') {
+			//Sort by date
+			usort($data, create_function('$a,$b', 'return $a["timestamp"] - $b["timestamp"];'));
+		}
+
+		if($this->images_order == 'desc') {
+			//reverse
+			$data = array_reverse($data);
+		}
+
+		
+
 		return $data;
 	}
+
+
+
 }
 ?>
